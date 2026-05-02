@@ -1,0 +1,77 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Collections ---
+
+    // 1. Users Profile
+    match /users/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+      allow create: if isUser(userId) && 
+                      incoming().keys().hasAll(['email', 'role', 'name']) && 
+                      incoming().role == 'user'; // Users can't make themselves admins
+      allow update: if (isUser(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'browsingHistory'])) ||
+                    isAdmin();
+    }
+
+    // 2. Products
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      // Sub-collection: Reviews
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow create: if isSignedIn() && isEmailVerified() && incoming().userId == request.auth.uid;
+        allow update, delete: if isSignedIn() && existing().userId == request.auth.uid;
+      }
+    }
+
+    // 3. Orders
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isAdmin();
+    }
+
+    // 4. Wishlists
+    match /wishlists/{userId} {
+      allow read, write: if isUser(userId);
+    }
+  }
+}

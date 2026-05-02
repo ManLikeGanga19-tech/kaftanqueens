@@ -1,0 +1,11 @@
+{
+  "name": "Kaftan Queens",
+  "description": "Premium Kenyan e-commerce platform for traditional and modern kaftans with M-Pesa integration, wishlist, and real-time order tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "e-commerce",
+    "m-pesa-payments",
+    "real-time-inventory",
+    "user-reviews"
+  ]
+}

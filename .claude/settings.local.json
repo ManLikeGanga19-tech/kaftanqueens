@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip -o kaftan-queens.zip -d kaftan-queens-design)",
+      "Bash(python3 -c \"import zipfile; z = zipfile.ZipFile\\('kaftan-queens.zip'\\); z.extractall\\('kaftan-queens-design'\\); print\\('Done'\\); print\\('\\\\n'.join\\(z.namelist\\(\\)[:80]\\)\\)\")",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3001/)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(lsof -ti:3001)",
+      "Bash(xargs kill *)",
+      "Bash(lsof -ti:3000)",
+      "Bash(npx tsc *)",
+      "Bash(pkill -f \"node.*dev\")",
+      "Bash(fuser -k 5173/tcp)",
+      "Bash(fuser -k 3000/tcp)",
+      "Bash(fuser -k 4173/tcp)",
+      "Bash(firebase --version)",
+      "Bash(wait)",
+      "Bash(firebase functions:secrets:set DARAJA_ENV --force)",
+      "Bash(firebase functions:secrets:set DARAJA_CONSUMER_KEY --force)",
+      "Bash(firebase functions:secrets:set DARAJA_CONSUMER_SECRET --force)",
+      "Bash(firebase functions:secrets:set DARAJA_SHORTCODE --force)",
+      "Bash(firebase functions:secrets:set DARAJA_PASSKEY --force)",
+      "Bash(firebase login *)",
+      "Bash(firebase projects:list)",
+      "Read(//home/mlg19/.config/firebase/**)",
+      "Read(//home/mlg19/.firebase/**)",
+      "Bash(gcloud auth *)",
+      "Read(//home/mlg19/.config/gcloud/**)",
+      "Bash(firebase login:ci --no-localhost)",
+      "Bash(env)",
+      "Read(//home/mlg19/.config/**)"
+    ]
+  }
+}
