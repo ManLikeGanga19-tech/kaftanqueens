@@ -1,46 +1,56 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { User, Package, Heart, Settings, LogOut, ExternalLink, ChevronRight } from 'lucide-react';
+import { User, Package, Heart, LogOut, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useCart } from '../contexts/CartContext';
+import { useWishlist } from '../contexts/WishlistContext';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Order, OrderStatus } from '../types';
+import { Order, Product } from '../types';
 import { motion } from 'motion/react';
+import ProductCard from '../components/ProductCard';
 
 const Profile = () => {
   const { user, profile, logout } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { wishlist, loading: wishlistLoading } = useWishlist();
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [wishlistProducts, setWishlistProducts] = useState<Product[]>([]);
+  const [loadingWishlistProducts, setLoadingWishlistProducts] = useState(false);
 
-  const initialTab = searchParams.get('tab') || 'profile';
+  const activeTab = searchParams.get('tab') || 'profile';
 
   useEffect(() => {
-    if (user && initialTab === 'orders') {
-      const fetchOrders = async () => {
-        setLoadingOrders(true);
-        try {
-          const q = query(
-            collection(db, 'orders'),
-            where('userId', '==', user.uid),
-            orderBy('createdAt', 'desc')
-          );
-          const snap = await getDocs(q);
-          setOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
-        } catch (error) {
-          console.error("Error fetching orders:", error);
-        }
-        setLoadingOrders(false);
-      };
-      fetchOrders();
+    if (!user || activeTab !== 'orders') return;
+    setLoadingOrders(true);
+    getDocs(query(
+      collection(db, 'orders'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    ))
+      .then(snap => setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order))))
+      .catch(() => setOrders([]))
+      .finally(() => setLoadingOrders(false));
+  }, [user, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'wishlist' || wishlist.length === 0) {
+      if (activeTab === 'wishlist') setWishlistProducts([]);
+      return;
     }
-  }, [user, initialTab]);
+    setLoadingWishlistProducts(true);
+    Promise.all(wishlist.map(id => getDoc(doc(db, 'products', id))))
+      .then(snaps => setWishlistProducts(
+        snaps.filter(s => s.exists()).map(s => ({ id: s.id, ...s.data() } as Product))
+      ))
+      .catch(() => setWishlistProducts([]))
+      .finally(() => setLoadingWishlistProducts(false));
+  }, [wishlist, activeTab]);
 
   if (!user) {
     return (
@@ -73,27 +83,23 @@ const Profile = () => {
           </div>
 
           <nav className="space-y-2">
-            <button onClick={() => navigate('/profile?tab=profile')} className={`w-full flex items-center justify-between px-4 py-3 text-[10px] uppercase tracking-widest font-bold transition-all ${initialTab === 'profile' ? 'bg-brand-primary text-brand-secondary' : 'hover:bg-brand-primary/5'}`}>
-              <div className="flex items-center gap-4">
-                <User size={16} />
-                <span>My Profile</span>
-              </div>
-              <ChevronRight size={14} className="opacity-40" />
-            </button>
-            <button onClick={() => navigate('/profile?tab=orders')} className={`w-full flex items-center justify-between px-4 py-3 text-[10px] uppercase tracking-widest font-bold transition-all ${initialTab === 'orders' ? 'bg-brand-primary text-brand-secondary' : 'hover:bg-brand-primary/5'}`}>
-              <div className="flex items-center gap-4">
-                <Package size={16} />
-                <span>My Orders</span>
-              </div>
-              <ChevronRight size={14} className="opacity-40" />
-            </button>
-            <button onClick={() => navigate('/profile?tab=wishlist')} className={`w-full flex items-center justify-between px-4 py-3 text-[10px] uppercase tracking-widest font-bold transition-all ${initialTab === 'wishlist' ? 'bg-brand-primary text-brand-secondary' : 'hover:bg-brand-primary/5'}`}>
-              <div className="flex items-center gap-4">
-                <Heart size={16} />
-                <span>Wishlist</span>
-              </div>
-              <ChevronRight size={14} className="opacity-40" />
-            </button>
+            {[
+              { tab: 'profile', icon: User, label: 'My Profile' },
+              { tab: 'orders', icon: Package, label: 'My Orders' },
+              { tab: 'wishlist', icon: Heart, label: 'Wishlist' },
+            ].map(({ tab, icon: Icon, label }) => (
+              <button
+                key={tab}
+                onClick={() => navigate(`/profile?tab=${tab}`)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-[10px] uppercase tracking-widest font-bold transition-all ${activeTab === tab ? 'bg-brand-primary text-brand-secondary' : 'hover:bg-brand-primary/5'}`}
+              >
+                <div className="flex items-center gap-4">
+                  <Icon size={16} />
+                  <span>{label}</span>
+                </div>
+                <ChevronRight size={14} className="opacity-40" />
+              </button>
+            ))}
             <Separator className="my-4 bg-brand-primary/10" />
             <button onClick={logout} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] uppercase tracking-widest font-bold text-red-500 hover:bg-red-500/5 transition-all">
               <LogOut size={16} />
@@ -104,7 +110,7 @@ const Profile = () => {
 
         {/* Content Area */}
         <main className="flex-1">
-          <Tabs value={initialTab} className="w-full">
+          <Tabs value={activeTab} className="w-full">
             <TabsContent value="profile" className="m-0 space-y-12">
               <h2 className="text-4xl font-serif tracking-tight">Identity & Secrets</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12 bg-white border border-brand-primary/10 p-10">
@@ -115,10 +121,6 @@ const Profile = () => {
                 <div className="space-y-2">
                   <p className="text-[10px] uppercase font-bold tracking-widest opacity-40">Email Address</p>
                   <p className="font-serif text-lg">{user.email}</p>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-[10px] uppercase font-bold tracking-widest opacity-40">Phone Number</p>
-                  <p className="font-serif text-lg">{profile?.email || 'Not verified'}</p>
                 </div>
                 <div className="space-y-2">
                   <p className="text-[10px] uppercase font-bold tracking-widest opacity-40">Membership Type</p>
@@ -140,9 +142,9 @@ const Profile = () => {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {orders.map((order) => (
-                    <motion.div 
-                      key={order.id} 
+                  {orders.map(order => (
+                    <motion.div
+                      key={order.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="bg-white border border-brand-primary/10 p-8 flex flex-col md:flex-row justify-between gap-8 md:items-center"
@@ -157,12 +159,9 @@ const Profile = () => {
                           <p className="text-[10px] uppercase tracking-widest font-bold opacity-60">Status: <span className="text-brand-accent">{order.status}</span></p>
                         </div>
                       </div>
-                      
                       <div className="flex md:flex-col items-center md:items-end justify-between md:justify-center gap-2">
                         <span className="font-medium text-lg">Kes {order.total.toLocaleString()}</span>
-                        <Button variant="outline" className="h-10 px-6 uppercase text-[10px] tracking-widest font-bold border-brand-primary/10 hover:bg-brand-primary hover:text-brand-secondary">
-                          Details
-                        </Button>
+                        <Button variant="outline" className="h-10 px-6 uppercase text-[10px] tracking-widest font-bold border-brand-primary/10 hover:bg-brand-primary hover:text-brand-secondary">Details</Button>
                       </div>
                     </motion.div>
                   ))}
@@ -172,12 +171,29 @@ const Profile = () => {
 
             <TabsContent value="wishlist" className="m-0 space-y-12">
               <h2 className="text-4xl font-serif tracking-tight">The Desire List</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                <div className="py-40 text-center space-y-6 border border-dashed border-brand-primary/20 col-span-full">
-                  <p className="font-serif text-2xl opacity-40 italic">Coming Soon...</p>
-                  <p className="text-[10px] uppercase tracking-widest font-bold opacity-30">Our artisans are curating your saved pieces</p>
+              {wishlistLoading || loadingWishlistProducts ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                  {[1, 2].map(i => (
+                    <div key={i} className="animate-pulse space-y-4">
+                      <div className="aspect-[3/4] bg-brand-primary/5" />
+                      <div className="h-4 bg-brand-primary/5 rounded w-3/4" />
+                    </div>
+                  ))}
                 </div>
-              </div>
+              ) : wishlistProducts.length === 0 ? (
+                <div className="py-40 text-center space-y-6 border border-dashed border-brand-primary/20">
+                  <Heart size={48} className="mx-auto text-brand-primary/20" />
+                  <p className="font-serif text-2xl opacity-40 italic">Your desire list is empty</p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold opacity-30">Heart a piece on any product page to save it here</p>
+                  <Button onClick={() => navigate('/shop')} variant="link" className="uppercase text-[10px] tracking-widest font-bold text-brand-accent">Explore the Collection</Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {wishlistProducts.map(product => (
+                    <ProductCard key={product.id} product={product} />
+                  ))}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </main>

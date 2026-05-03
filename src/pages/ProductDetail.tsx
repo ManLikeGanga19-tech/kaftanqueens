@@ -1,94 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Star, Truck, ShieldCheck, Heart, ShoppingBag, ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
+import { Star, Truck, ShieldCheck, Heart, ShoppingBag, RefreshCw, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import ProductCard from '../components/ProductCard';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Category, Product, Review } from '../types';
+import { useWishlist } from '../contexts/WishlistContext';
+import { Product, Review } from '../types';
 import { getPersonalizedRecommendations } from '../lib/gemini';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, getDoc, getDocs, query, where, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { toast } from 'sonner';
-
-const MOCK_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    name: "Luxury Zari Silk Dera",
-    description: "This exquisite silk dera is a masterpiece of Kenyan craftsmanship. Featuring hand-woven gold zari embroidery on ethically sourced raw silk, it embodies the perfect blend of heritage and luxury. The flowing silhouette ensures comfort without compromising on elegance, making it an ideal choice for weddings, traditional ceremonies, or upscale evening events.",
-    category: Category.TRADITIONAL,
-    price: 1,
-    currencies: { USD: 120, EUR: 110 },
-    sizes: ["One Size"],
-    colors: ["Gold", "Midnight Black"],
-    stock: 3,
-    rating: 4.9,
-    reviewsCount: 15,
-    images: [
-      "https://images.unsplash.com/photo-1620331311520-246422fd82f9?q=80&w=800&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?q=80&w=800&auto=format&fit=crop"
-    ],
-    createdAt: new Date()
-  },
-  {
-    id: '2',
-    name: "Coastal Breeze Cotton Kaftan",
-    description: "Lightweight, breathable cotton kaftan featuring traditional Swahili print patterns. Ideal for the Kenyan coast and everyday elegant lounging.",
-    category: Category.TRADITIONAL,
-    price: 1,
-    currencies: { USD: 55, EUR: 50 },
-    sizes: ["One Size"],
-    colors: ["Ocean Blue", "White"],
-    stock: 12,
-    rating: 4.7,
-    reviewsCount: 22,
-    images: ["https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  }
-];
-
-const MOCK_REVIEWS: Review[] = [
-  {
-    id: 'r1',
-    productId: '1',
-    userId: 'u1',
-    userName: "Sarah M.",
-    rating: 5,
-    comment: "The embroidery is even more beautiful in person. I wore this to a gala and received so many compliments!",
-    createdAt: new Date()
-  },
-  {
-    id: 'r2',
-    productId: '1',
-    userId: 'u2',
-    userName: "Juma O.",
-    rating: 4,
-    comment: "Excellent quality and fast delivery. Fits slightly larger than expected but looks great.",
-    createdAt: new Date()
-  }
-];
-
-const COLOR_MAP: Record<string, string> = {
-  'Gold': '#C5A059',
-  'Midnight Black': '#1A1A1A',
-  'Ocean Blue': '#2E6EA6',
-  'White': '#F5F2ED',
-  'Sage': '#8FAE8B',
-  'Sand': '#C8B89A',
-  'Rose': '#D4888A',
-  'Emerald': '#1D6A4A',
-  'Navy': '#1B2A4A',
-  'Ivory': '#FFFFF0',
-  'Maroon': '#7D1C2E',
-  'Burgundy': '#800020',
-  'Coral': '#FF6B6B',
-};
 
 const RATING_LABELS = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
 
@@ -96,31 +22,52 @@ const ProductDetail = () => {
   const { id } = useParams();
   const { addItem } = useCart();
   const { user } = useAuth();
+  const { toggle, isWishlisted } = useWishlist();
+  const wishlisted = id ? isWishlisted(id) : false;
+
   const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [mainImage, setMainImage] = useState('');
   const [recommendations, setRecommendations] = useState<Product[]>([]);
-  const [localReviews, setLocalReviews] = useState<Review[]>(MOCK_REVIEWS);
+  const [localReviews, setLocalReviews] = useState<Review[]>([]);
   const [reviewRating, setReviewRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
+    if (!id) return;
     window.scrollTo(0, 0);
-    const found = MOCK_PRODUCTS.find(p => p.id === id) || MOCK_PRODUCTS[0];
-    setProduct(found);
-    setMainImage(found.images[0]);
-    setSelectedSize(found.sizes[0]);
-    setSelectedColor(found.colors[0]);
-    setLocalReviews(MOCK_REVIEWS.filter(r => r.productId === found.id));
-    const loadRecs = async () => {
-      const recs = await getPersonalizedRecommendations([found.id], MOCK_PRODUCTS);
-      setRecommendations(recs);
+    setLoading(true);
+
+    const loadProduct = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'products', id));
+        if (!snap.exists()) { setLoading(false); return; }
+        const p = { id: snap.id, ...snap.data() } as Product;
+        setProduct(p);
+        setMainImage(p.images[0] ?? '');
+        setSelectedSize(p.sizes[0] ?? '');
+        setSelectedColor(p.colors[0]?.name ?? '');
+
+        // Load reviews
+        const revSnap = await getDocs(query(collection(db, 'reviews'), where('productId', '==', id)));
+        setLocalReviews(revSnap.docs.map(d => ({ id: d.id, ...d.data() } as Review)));
+
+        // Load recommendations (fetch a small pool to pass to Gemini)
+        const poolSnap = await getDocs(query(collection(db, 'products'), where('isActive', '==', true), limit(10)));
+        const pool = poolSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product)).filter(p2 => p2.id !== id);
+        const recs = await getPersonalizedRecommendations([id], pool);
+        setRecommendations(recs);
+      } catch {
+        // silently fail — product just won't show
+      }
+      setLoading(false);
     };
-    loadRecs();
+    loadProduct();
   }, [id]);
 
   const handleSubmitReview = async () => {
@@ -147,50 +94,47 @@ const ProductDetail = () => {
     }
   };
 
-  if (!product) return null;
+  if (loading) return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="w-10 h-10 border-2 border-brand-primary/20 border-t-brand-accent animate-spin" />
+    </div>
+  );
+
+  if (!product) return (
+    <div className="container mx-auto px-4 py-40 text-center space-y-4">
+      <p className="font-serif text-2xl opacity-40">Product not found</p>
+      <Link to="/shop" className="text-brand-accent uppercase text-[10px] tracking-widest font-bold hover:underline">Back to Shop</Link>
+    </div>
+  );
 
   const handleAddToCart = () => {
     addItem({
       productId: product.id,
       name: product.name,
-      price: product.price,
+      price: product.discountedPrice ?? product.price,
       quantity,
       size: selectedSize,
       color: selectedColor,
-      image: product.images[0]
+      image: product.images[0] ?? ''
     });
     toast.success(`${product.name} added to cart`);
   };
 
+  const displayPrice = product.discountedPrice ?? product.price;
+
   return (
     <div className="container mx-auto px-4 py-20 pb-32">
-      {/* Breadcrumbs */}
-      <Breadcrumbs 
-        items={[
-          { label: 'Shop', href: '/shop' },
-          { label: product.name }
-        ]} 
-      />
+      <Breadcrumbs items={[{ label: 'Shop', href: '/shop' }, { label: product.name }]} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
         {/* Image Gallery */}
         <div className="space-y-6">
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="aspect-[3/4] bg-gray-100 overflow-hidden"
-          >
-            <img 
-              src={mainImage} 
-              alt={product.name}
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="aspect-[3/4] bg-gray-100 overflow-hidden">
+            <img src={mainImage} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </motion.div>
-          
           <div className="flex space-x-4">
             {product.images.map((img, idx) => (
-              <button 
+              <button
                 key={idx}
                 onClick={() => setMainImage(img)}
                 className={`w-24 aspect-[3/4] bg-gray-100 overflow-hidden border-2 transition-all ${mainImage === img ? 'border-brand-accent' : 'border-transparent opacity-60 hover:opacity-100'}`}
@@ -207,7 +151,12 @@ const ProductDetail = () => {
             <p className="text-xs uppercase tracking-[0.3em] font-bold text-brand-maroon">{product.category}</p>
             <h1 className="text-4xl md:text-5xl font-serif tracking-tight leading-tight">{product.name}</h1>
             <div className="flex items-center space-x-4">
-              <span className="text-2xl font-medium">Kes {product.price.toLocaleString()}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl font-medium">Kes {displayPrice.toLocaleString()}</span>
+                {product.discountedPrice && (
+                  <span className="text-sm line-through opacity-40">Kes {product.price.toLocaleString()}</span>
+                )}
+              </div>
               <Separator orientation="vertical" className="h-6" />
               <div className="flex items-center space-x-1 text-brand-accent">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -232,14 +181,14 @@ const ProductDetail = () => {
               <div className="flex space-x-3">
                 {product.colors.map(color => (
                   <button
-                    key={color}
-                    onClick={() => setSelectedColor(color)}
-                    title={color}
-                    className={`w-10 h-10 rounded-full border-2 transition-all flex items-center justify-center ${selectedColor === color ? 'border-brand-accent scale-110' : 'border-brand-primary/20 hover:border-brand-accent/60'}`}
+                    key={color.name}
+                    onClick={() => setSelectedColor(color.name)}
+                    title={color.name}
+                    className={`w-10 h-10 rounded-full border-2 transition-all flex items-center justify-center ${selectedColor === color.name ? 'border-brand-accent scale-110' : 'border-brand-primary/20 hover:border-brand-accent/60'}`}
                   >
                     <div
                       className="w-7 h-7 rounded-full shadow-inner"
-                      style={{ backgroundColor: COLOR_MAP[color] ?? '#C8B89A', border: color === 'White' || color === 'Ivory' ? '1px solid #ccc' : undefined }}
+                      style={{ backgroundColor: color.hex, border: color.hex === '#F5F2ED' || color.hex === '#FFFFF0' ? '1px solid #ccc' : undefined }}
                     />
                   </button>
                 ))}
@@ -250,11 +199,11 @@ const ProductDetail = () => {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <p className="text-[10px] uppercase tracking-widest font-bold">Select Size</p>
-                <button className="text-[10px] uppercase tracking-widest font-bold text-brand-accent hover:underline">Size Guide</button>
+                <Link to="/size-guide" className="text-[10px] uppercase tracking-widest font-bold text-brand-accent hover:underline">Size Guide</Link>
               </div>
               <div className="flex flex-wrap gap-3">
                 {product.sizes.map(size => (
-                  <button 
+                  <button
                     key={size}
                     onClick={() => setSelectedSize(size)}
                     className={`min-w-[50px] h-10 border text-[10px] uppercase tracking-widest font-bold transition-all px-4 ${selectedSize === size ? 'bg-brand-primary text-brand-secondary' : 'bg-transparent border-brand-primary/20 opacity-60 hover:opacity-100 hover:border-brand-accent'}`}
@@ -278,7 +227,7 @@ const ProductDetail = () => {
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 pt-6">
-            <Button 
+            <Button
               className="btn-luxury h-16 flex-1 flex items-center justify-center space-x-3 text-sm uppercase tracking-[0.2em] font-bold"
               onClick={handleAddToCart}
               disabled={product.stock === 0}
@@ -286,8 +235,12 @@ const ProductDetail = () => {
               <ShoppingBag size={20} />
               <span>{product.stock === 0 ? 'Sold Out' : 'Add to Collection'}</span>
             </Button>
-            <Button variant="outline" className="h-16 w-full sm:w-16 border-brand-primary/20 flex items-center justify-center p-0 hover:bg-brand-accent/10 hover:text-brand-accent">
-              <Heart size={20} />
+            <Button
+              variant="outline"
+              className={`h-16 w-full sm:w-16 border-brand-primary/20 flex items-center justify-center p-0 hover:bg-brand-accent/10 hover:text-brand-accent ${wishlisted ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/40' : ''}`}
+              onClick={() => id && toggle(id)}
+            >
+              <Heart size={20} fill={wishlisted ? 'currentColor' : 'none'} />
             </Button>
           </div>
 
@@ -305,53 +258,29 @@ const ProductDetail = () => {
         </div>
       </div>
 
-      {/* Narrative & Details */}
+      {/* Narrative & Details Tabs */}
       <div className="mt-20">
         <Tabs defaultValue="details" className="w-full">
-          {/* Scroll wrapper carries the border-b; TabsList inside is min-w-max so it never wraps */}
           <div className="overflow-x-auto [&::-webkit-scrollbar]:hidden border-b border-brand-primary/10">
             <TabsList className="flex min-w-max bg-transparent border-none h-auto p-0 rounded-none gap-6 sm:gap-10">
-              <TabsTrigger
-                value="details"
-                className="px-0 py-4 shrink-0 bg-transparent data-active:bg-transparent text-brand-primary/40 data-active:text-brand-maroon uppercase text-[10px] sm:text-xs tracking-wider sm:tracking-widest font-bold transition-colors rounded-none shadow-none data-active:[box-shadow:inset_0_-2px_0_0_var(--color-brand-maroon)]"
-              >
+              <TabsTrigger value="details" className="px-0 py-4 shrink-0 bg-transparent data-active:bg-transparent text-brand-primary/40 data-active:text-brand-maroon uppercase text-[10px] sm:text-xs tracking-wider sm:tracking-widest font-bold transition-colors rounded-none shadow-none data-active:[box-shadow:inset_0_-2px_0_0_var(--color-brand-maroon)]">
                 The Narrative
               </TabsTrigger>
-              <TabsTrigger
-                value="shipping"
-                className="px-0 py-4 shrink-0 bg-transparent data-active:bg-transparent text-brand-primary/40 data-active:text-brand-maroon uppercase text-[10px] sm:text-xs tracking-wider sm:tracking-widest font-bold transition-colors rounded-none shadow-none data-active:[box-shadow:inset_0_-2px_0_0_var(--color-brand-maroon)]"
-              >
+              <TabsTrigger value="shipping" className="px-0 py-4 shrink-0 bg-transparent data-active:bg-transparent text-brand-primary/40 data-active:text-brand-maroon uppercase text-[10px] sm:text-xs tracking-wider sm:tracking-widest font-bold transition-colors rounded-none shadow-none data-active:[box-shadow:inset_0_-2px_0_0_var(--color-brand-maroon)]">
                 Shipping & Care
               </TabsTrigger>
-              <TabsTrigger
-                value="reviews"
-                className="px-0 py-4 shrink-0 bg-transparent data-active:bg-transparent text-brand-primary/40 data-active:text-brand-maroon uppercase text-[10px] sm:text-xs tracking-wider sm:tracking-widest font-bold transition-colors rounded-none shadow-none data-active:[box-shadow:inset_0_-2px_0_0_var(--color-brand-maroon)]"
-              >
+              <TabsTrigger value="reviews" className="px-0 py-4 shrink-0 bg-transparent data-active:bg-transparent text-brand-primary/40 data-active:text-brand-maroon uppercase text-[10px] sm:text-xs tracking-wider sm:tracking-widest font-bold transition-colors rounded-none shadow-none data-active:[box-shadow:inset_0_-2px_0_0_var(--color-brand-maroon)]">
                 Reviews ({product.reviewsCount})
               </TabsTrigger>
             </TabsList>
           </div>
 
-          {/* Narrative */}
-          <TabsContent value="details" className="py-12 max-w-4xl space-y-10">
-            <p className="text-brand-primary/70 leading-relaxed text-sm">{product.description}</p>
-            <div>
-              <div className="flex items-center justify-between border-b border-brand-primary/5 py-4">
-                <span className="text-[10px] uppercase tracking-widest font-bold opacity-50">Material</span>
-                <span className="text-sm font-medium">100% Raw Silk</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-brand-primary/5 py-4">
-                <span className="text-[10px] uppercase tracking-widest font-bold opacity-50">Origin</span>
-                <span className="text-sm font-medium">Hand-crafted in Nairobi, Kenya</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-brand-primary/5 py-4">
-                <span className="text-[10px] uppercase tracking-widest font-bold opacity-50">Embroidery</span>
-                <span className="text-sm font-medium">Traditional Zari Threadwork</span>
-              </div>
-            </div>
+          <TabsContent value="details" className="py-12 max-w-4xl space-y-6">
+            <p className="text-brand-primary/70 leading-relaxed text-sm whitespace-pre-line">
+              {product.narrative || product.description}
+            </p>
           </TabsContent>
 
-          {/* Shipping & Care */}
           <TabsContent value="shipping" className="py-12 max-w-4xl">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-12">
               <div className="space-y-5">
@@ -359,8 +288,8 @@ const ProductDetail = () => {
                   <ShieldCheck size={18} className="text-brand-accent" />
                 </div>
                 <h4 className="text-xs uppercase tracking-widest font-bold">Care Instructions</h4>
-                <p className="text-sm text-brand-primary/70 leading-relaxed">
-                  Dry clean only. Do not bleach. Steam iron on low heat to maintain the silk's integrity and embroidery luster.
+                <p className="text-sm text-brand-primary/70 leading-relaxed whitespace-pre-line">
+                  {product.shippingCare || 'Dry clean only. Do not bleach. Steam iron on low heat to maintain fabric integrity.'}
                 </p>
               </div>
               <div className="space-y-5">
@@ -377,34 +306,16 @@ const ProductDetail = () => {
             </div>
           </TabsContent>
 
-          {/* Reviews */}
           <TabsContent value="reviews" className="py-12 max-w-4xl space-y-12">
-
-            {/* ── Write a Review ── */}
             {user ? (
               <div className="border border-brand-primary/10 p-6 sm:p-8 space-y-6">
                 <h3 className="text-[10px] uppercase tracking-[0.25em] font-bold">Share Your Experience</h3>
-
-                {/* Star picker */}
                 <div className="space-y-2">
                   <p className="text-[9px] uppercase tracking-widest font-bold text-brand-primary/40">Your Rating</p>
                   <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map(star => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setReviewRating(star)}
-                        onMouseEnter={() => setHoverRating(star)}
-                        onMouseLeave={() => setHoverRating(0)}
-                        className="p-0.5 transition-transform hover:scale-110"
-                        aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
-                      >
-                        <Star
-                          size={28}
-                          fill={(hoverRating || reviewRating) >= star ? 'currentColor' : 'none'}
-                          strokeWidth={1.5}
-                          className={(hoverRating || reviewRating) >= star ? 'text-brand-accent' : 'text-brand-primary/20'}
-                        />
+                      <button key={star} type="button" onClick={() => setReviewRating(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="p-0.5 transition-transform hover:scale-110">
+                        <Star size={28} fill={(hoverRating || reviewRating) >= star ? 'currentColor' : 'none'} strokeWidth={1.5} className={(hoverRating || reviewRating) >= star ? 'text-brand-accent' : 'text-brand-primary/20'} />
                       </button>
                     ))}
                     {(hoverRating || reviewRating) > 0 && (
@@ -414,27 +325,12 @@ const ProductDetail = () => {
                     )}
                   </div>
                 </div>
-
-                {/* Comment */}
                 <div className="space-y-2">
                   <p className="text-[9px] uppercase tracking-widest font-bold text-brand-primary/40">Your Experience</p>
-                  <textarea
-                    value={reviewComment}
-                    onChange={e => setReviewComment(e.target.value.slice(0, 500))}
-                    placeholder="Describe the quality, fit, and how it made you feel..."
-                    rows={4}
-                    className="w-full border border-brand-primary/15 bg-transparent px-4 py-3 text-sm resize-none focus:outline-none focus:border-brand-accent transition-colors placeholder:text-brand-primary/25"
-                  />
-                  <p className="text-[9px] uppercase tracking-widest font-bold text-brand-primary/25 text-right">
-                    {reviewComment.length} / 500
-                  </p>
+                  <textarea value={reviewComment} onChange={e => setReviewComment(e.target.value.slice(0, 500))} placeholder="Describe the quality, fit, and how it made you feel..." rows={4} className="w-full border border-brand-primary/15 bg-transparent px-4 py-3 text-sm resize-none focus:outline-none focus:border-brand-accent transition-colors placeholder:text-brand-primary/25" />
+                  <p className="text-[9px] uppercase tracking-widest font-bold text-brand-primary/25 text-right">{reviewComment.length} / 500</p>
                 </div>
-
-                <Button
-                  onClick={handleSubmitReview}
-                  disabled={submittingReview || reviewRating === 0 || !reviewComment.trim()}
-                  className="btn-luxury h-12 px-8 uppercase text-[10px] tracking-widest font-bold disabled:opacity-40 flex items-center gap-2"
-                >
+                <Button onClick={handleSubmitReview} disabled={submittingReview || reviewRating === 0 || !reviewComment.trim()} className="btn-luxury h-12 px-8 uppercase text-[10px] tracking-widest font-bold disabled:opacity-40 flex items-center gap-2">
                   {submittingReview && <Loader2 size={14} className="animate-spin" />}
                   {submittingReview ? 'Submitting...' : 'Submit Review'}
                 </Button>
@@ -443,19 +339,14 @@ const ProductDetail = () => {
               <div className="border border-brand-primary/10 bg-brand-primary/[0.02] p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <p className="text-sm font-serif">Share your experience</p>
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-brand-primary/40">
-                    Sign in to write a review for this piece.
-                  </p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-brand-primary/40">Sign in to write a review for this piece.</p>
                 </div>
                 <Link to="/login" state={{ from: `/product/${product.id}` }}>
-                  <Button variant="outline" className="h-10 px-6 uppercase text-[10px] tracking-widest font-bold border-brand-primary/15 shrink-0 hover:bg-brand-primary hover:text-brand-secondary">
-                    Sign In to Review
-                  </Button>
+                  <Button variant="outline" className="h-10 px-6 uppercase text-[10px] tracking-widest font-bold border-brand-primary/15 shrink-0 hover:bg-brand-primary hover:text-brand-secondary">Sign In to Review</Button>
                 </Link>
               </div>
             )}
 
-            {/* ── Rating summary + reviews list ── */}
             <div className="flex flex-col md:flex-row gap-16">
               <div className="w-full md:w-56 space-y-5 shrink-0">
                 <div className="text-6xl font-serif">{product.rating.toFixed(1)}</div>
@@ -464,16 +355,11 @@ const ProductDetail = () => {
                     <Star key={i} size={20} fill={i < Math.floor(product.rating) ? 'currentColor' : 'none'} strokeWidth={1.5} />
                   ))}
                 </div>
-                <p className="text-[10px] uppercase tracking-widest font-bold opacity-40">
-                  Based on {product.reviewsCount} reviews
-                </p>
+                <p className="text-[10px] uppercase tracking-widest font-bold opacity-40">Based on {product.reviewsCount} reviews</p>
               </div>
-
               <div className="flex-1 space-y-10">
                 {localReviews.length === 0 ? (
-                  <p className="text-sm text-brand-primary/40 font-serif italic pt-4">
-                    Be the first to review this piece.
-                  </p>
+                  <p className="text-sm text-brand-primary/40 font-serif italic pt-4">Be the first to review this piece.</p>
                 ) : (
                   localReviews.map(review => (
                     <div key={review.id} className="space-y-3">
@@ -492,7 +378,7 @@ const ProductDetail = () => {
                           </div>
                         </div>
                         <span className="text-[10px] uppercase opacity-40 font-bold tracking-widest">
-                          {new Date(review.createdAt).toLocaleDateString()}
+                          {review.createdAt?.toDate ? review.createdAt.toDate().toLocaleDateString() : new Date(review.createdAt).toLocaleDateString()}
                         </span>
                       </div>
                       <p className="text-brand-primary/70 text-sm leading-relaxed pl-12">"{review.comment}"</p>
@@ -506,7 +392,7 @@ const ProductDetail = () => {
         </Tabs>
       </div>
 
-      {/* AI Recommendations */}
+      {/* Recommendations */}
       {recommendations.length > 0 && (
         <section className="mt-40 space-y-12">
           <div className="space-y-2 text-center">

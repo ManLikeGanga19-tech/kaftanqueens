@@ -1,90 +1,41 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Star, Truck, ShieldCheck, CreditCard, Gem } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import ProductCard from '../components/ProductCard';
-import { Category, Product } from '../types';
-
-const MOCK_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    name: "Luxury Zari Silk Dera",
-    description: "Flowing silk dera with intricate gold zari embroidery along the neckline and sleeves. Perfect for high-end traditional events.",
-    category: Category.TRADITIONAL,
-    price: 1,
-    currencies: { USD: 120, EUR: 110 },
-    sizes: ["One Size"],
-    colors: ["Gold", "Midnight Black"],
-    stock: 3,
-    rating: 4.9,
-    reviewsCount: 15,
-    images: ["https://images.unsplash.com/photo-1620331311520-246422fd82f9?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  },
-  {
-    id: '2',
-    name: "Coastal Breeze Cotton Kaftan",
-    description: "Lightweight, breathable cotton kaftan featuring traditional Swahili print patterns. Ideal for the Kenyan coast.",
-    category: Category.TRADITIONAL,
-    price: 1,
-    currencies: { USD: 55, EUR: 50 },
-    sizes: ["One Size"],
-    colors: ["Ocean Blue", "White"],
-    stock: 12,
-    rating: 4.7,
-    reviewsCount: 22,
-    images: ["https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  },
-  {
-    id: '3',
-    name: "Modern Minimalist Linen Dera",
-    description: "A contemporary take on the dera. Clean lines, hidden pockets, and premium Belgian linen for the modern Kenyan woman.",
-    category: Category.MODERN,
-    price: 1,
-    currencies: { USD: 75, EUR: 70 },
-    sizes: ["S", "M", "L"],
-    colors: ["Sage", "Sand", "Rose"],
-    stock: 8,
-    rating: 4.8,
-    reviewsCount: 10,
-    images: ["https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  },
-  {
-    id: '4',
-    name: "Royal Emerald Velvet Kaftan",
-    description: "Heavy velvet kaftan with hand-stitched crystal detailing. An opulent piece for weddings and grand celebrations.",
-    category: Category.TRADITIONAL,
-    price: 1,
-    currencies: { USD: 170, EUR: 160 },
-    sizes: ["M", "L"],
-    colors: ["Emerald"],
-    stock: 2,
-    rating: 5.0,
-    reviewsCount: 5,
-    images: ["https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  }
-];
+import { Product } from '../types';
+import { collection, getDocs, query, limit, orderBy } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 const Home = () => {
+  const [products, setProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    getDocs(query(collection(db, 'products'), orderBy('createdAt', 'desc'), limit(20)))
+      .then(snap => {
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+        setProducts(all.filter(p => p.isActive !== false).slice(0, 4));
+      })
+      .catch(() => setProducts([]));
+  }, []);
+
   return (
     <div className="space-y-32 pb-32">
       {/* Hero Section */}
       <section className="relative h-[90vh] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img 
-            src="/home/mlg19/kaftanqueens/src/public/hero.jpg" 
+          <img
+            src="/images/hero.jpg"
             alt="Hero Kaftan"
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-brand-primary/75 via-brand-primary/40 to-transparent" />
         </div>
-        
+
         <div className="container mx-auto px-4 relative z-10">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 1, ease: "easeOut" }}
@@ -110,14 +61,14 @@ const Home = () => {
 
       {/* Philosophy Section */}
       <section className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-20 items-center">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           className="aspect-[4/5] bg-brand-primary/5 p-8"
         >
-          <img 
-            src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=800&auto=format&fit=crop" 
+          <img
+            src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=800&auto=format&fit=crop"
             alt="Craftsmanship"
             className="w-full h-full object-cover shadow-2xl"
             referrerPolicy="no-referrer"
@@ -158,10 +109,17 @@ const Home = () => {
             <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12">
-          {MOCK_PRODUCTS.map(product => (
+          {products.map(product => (
             <ProductCard key={product.id} product={product} />
+          ))}
+          {products.length === 0 && Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="animate-pulse space-y-4">
+              <div className="aspect-[3/4] bg-brand-primary/5" />
+              <div className="h-4 bg-brand-primary/5 rounded w-3/4" />
+              <div className="h-3 bg-brand-primary/5 rounded w-1/2" />
+            </div>
           ))}
         </div>
       </section>

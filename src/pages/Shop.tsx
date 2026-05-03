@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter, SlidersHorizontal, ChevronDown, Search } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Search } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import ProductCard from '../components/ProductCard';
 import Breadcrumbs from '../components/Breadcrumbs';
-import { Category, Product } from '../types';
+import { CategoryDoc, Product } from '../types';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -14,76 +14,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
-
-const MOCK_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    name: "Luxury Zari Silk Dera",
-    description: "Flowing silk dera with intricate gold zari embroidery along the neckline and sleeves.",
-    category: Category.TRADITIONAL,
-    price: 1,
-    currencies: { USD: 120, EUR: 110 },
-    sizes: ["One Size"],
-    colors: ["Gold", "Midnight Black"],
-    stock: 3,
-    rating: 4.9,
-    reviewsCount: 15,
-    images: ["https://images.unsplash.com/photo-1620331311520-246422fd82f9?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  },
-  {
-    id: '2',
-    name: "Coastal Breeze Cotton Kaftan",
-    description: "Lightweight, breathable cotton kaftan featuring traditional Swahili print patterns.",
-    category: Category.TRADITIONAL,
-    price: 1,
-    currencies: { USD: 55, EUR: 50 },
-    sizes: ["One Size"],
-    colors: ["Ocean Blue", "White"],
-    stock: 12,
-    rating: 4.7,
-    reviewsCount: 22,
-    images: ["https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  },
-  {
-    id: '3',
-    name: "Modern Minimalist Linen Dera",
-    description: "A contemporary take on the dera. Clean lines and premium linen.",
-    category: Category.MODERN,
-    price: 1,
-    currencies: { USD: 75, EUR: 70 },
-    sizes: ["S", "M", "L"],
-    colors: ["Sage", "Sand", "Rose"],
-    stock: 8,
-    rating: 4.8,
-    reviewsCount: 10,
-    images: ["https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  },
-  {
-    id: '4',
-    name: "Royal Emerald Velvet Kaftan",
-    description: "Heavy velvet kaftan with hand-stitched crystal detailing.",
-    category: Category.TRADITIONAL,
-    price: 1,
-    currencies: { USD: 170, EUR: 160 },
-    sizes: ["M", "L"],
-    colors: ["Emerald"],
-    stock: 2,
-    rating: 5.0,
-    reviewsCount: 5,
-    images: ["https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=800&auto=format&fit=crop"],
-    createdAt: new Date()
-  }
-];
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 const Shop = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(searchParams.get('category'));
   const [sortBy, setSortBy] = useState('newest');
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<CategoryDoc[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setActiveCategory(searchParams.get('category'));
@@ -91,19 +32,39 @@ const Shop = () => {
     if (q) setSearchQuery(q);
   }, [searchParams]);
 
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [prodSnap, catSnap] = await Promise.all([
+          getDocs(query(collection(db, 'products'), orderBy('createdAt', 'desc'))),
+          getDocs(collection(db, 'categories')),
+        ]);
+        const allProds = prodSnap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+        const allCats = catSnap.docs.map(d => ({ id: d.id, ...d.data() } as CategoryDoc));
+        setProducts(allProds.filter(p => p.isActive !== false));
+        setCategories(allCats.filter(c => c.isActive !== false).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
+      } catch {
+        setProducts([]);
+      }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
   const filteredProducts = useMemo(() => {
-    return MOCK_PRODUCTS.filter(product => {
+    return products.filter(product => {
       const matchesCategory = !activeCategory || product.category === activeCategory;
-      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            product.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     }).sort((a, b) => {
-      if (sortBy === 'price-low') return a.price - b.price;
-      if (sortBy === 'price-high') return b.price - a.price;
+      if (sortBy === 'price-low') return (a.discountedPrice ?? a.price) - (b.discountedPrice ?? b.price);
+      if (sortBy === 'price-high') return (b.discountedPrice ?? b.price) - (a.discountedPrice ?? a.price);
       if (sortBy === 'popular') return b.rating - a.rating;
-      return 0; // Default: Newest
+      return 0;
     });
-  }, [activeCategory, searchQuery, sortBy]);
+  }, [products, activeCategory, searchQuery, sortBy]);
 
   const handleCategoryChange = (category: string | null) => {
     if (category) {
@@ -118,7 +79,7 @@ const Shop = () => {
   return (
     <div className="container mx-auto px-4 py-20 pb-40 space-y-8">
       <Breadcrumbs items={[{ label: 'Shop' }]} />
-      
+
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-brand-primary/10 pb-12">
         <div className="space-y-4">
@@ -128,12 +89,12 @@ const Shop = () => {
             Explore our curated selection of {activeCategory || 'all'} kaftans.
           </p>
         </div>
-        
+
         <div className="flex items-center space-x-4">
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-primary/30" size={16} />
-            <Input 
-              placeholder="Search products..." 
+            <Input
+              placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 h-12 bg-transparent border-brand-primary/10 rounded-none focus-visible:ring-brand-accent uppercase text-[10px] tracking-widest"
@@ -153,26 +114,23 @@ const Shop = () => {
         </div>
       </div>
 
-      {/* Filter Tabs */}
+      {/* Filter Tabs — All + dynamic categories from Firestore */}
       <div className="flex items-center space-x-8 overflow-x-auto pb-4 scrollbar-hide">
-        <button 
+        <button
           onClick={() => handleCategoryChange(null)}
           className={`flex-shrink-0 uppercase text-[11px] tracking-[0.2em] font-bold pb-2 border-b-2 transition-all ${!activeCategory ? 'border-brand-accent text-brand-primary' : 'border-transparent text-brand-primary/40'}`}
         >
           All Items
         </button>
-        <button 
-          onClick={() => handleCategoryChange(Category.TRADITIONAL)}
-          className={`flex-shrink-0 uppercase text-[11px] tracking-[0.2em] font-bold pb-2 border-b-2 transition-all ${activeCategory === Category.TRADITIONAL ? 'border-brand-accent text-brand-primary' : 'border-transparent text-brand-primary/40'}`}
-        >
-          Traditional
-        </button>
-        <button 
-          onClick={() => handleCategoryChange(Category.MODERN)}
-          className={`flex-shrink-0 uppercase text-[11px] tracking-[0.2em] font-bold pb-2 border-b-2 transition-all ${activeCategory === Category.MODERN ? 'border-brand-accent text-brand-primary' : 'border-transparent text-brand-primary/40'}`}
-        >
-          Modern
-        </button>
+        {categories.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => handleCategoryChange(cat.slug)}
+            className={`flex-shrink-0 uppercase text-[11px] tracking-[0.2em] font-bold pb-2 border-b-2 transition-all ${activeCategory === cat.slug ? 'border-brand-accent text-brand-primary' : 'border-transparent text-brand-primary/40'}`}
+          >
+            {cat.name}
+          </button>
+        ))}
       </div>
 
       {/* Results Info */}
@@ -182,31 +140,38 @@ const Shop = () => {
           {activeCategory && (
             <Badge variant="secondary" className="rounded-none bg-brand-primary/5 hover:bg-brand-primary/5 px-2 py-1 flex items-center gap-2">
               {activeCategory}
-              <button 
-                onClick={() => handleCategoryChange(null)}
-                className="hover:text-brand-accent"
-              >
-                ×
-              </button>
+              <button onClick={() => handleCategoryChange(null)} className="hover:text-brand-accent">×</button>
             </Badge>
           )}
         </div>
       </div>
 
       {/* Product Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-16">
-        <AnimatePresence mode="popLayout">
-          {filteredProducts.map(product => (
-            <ProductCard key={product.id} product={product} />
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-16">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="animate-pulse space-y-4">
+              <div className="aspect-[3/4] bg-brand-primary/5" />
+              <div className="h-4 bg-brand-primary/5 rounded w-3/4" />
+              <div className="h-3 bg-brand-primary/5 rounded w-1/2" />
+            </div>
           ))}
-        </AnimatePresence>
-      </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-16">
+          <AnimatePresence mode="popLayout">
+            {filteredProducts.map(product => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
 
-      {filteredProducts.length === 0 && (
+      {!loading && filteredProducts.length === 0 && (
         <div className="text-center py-20 bg-brand-primary/5 space-y-4">
           <p className="font-serif text-2xl uppercase tracking-widest opacity-30 italic">No products found</p>
-          <button 
-            onClick={() => {setSearchQuery(''); handleCategoryChange(null);}}
+          <button
+            onClick={() => { setSearchQuery(''); handleCategoryChange(null); }}
             className="text-brand-accent uppercase text-[10px] tracking-tighter font-bold hover:underline"
           >
             Clear all filters

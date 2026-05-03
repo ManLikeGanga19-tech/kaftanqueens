@@ -21,12 +21,8 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -42,9 +38,9 @@ service cloud.firestore {
     // 1. Users Profile
     match /users/{userId} {
       allow read: if isUser(userId) || isAdmin();
-      allow create: if isUser(userId) && 
-                      incoming().keys().hasAll(['email', 'role', 'name']) && 
-                      incoming().role == 'user'; // Users can't make themselves admins
+      allow create: if isUser(userId) &&
+                      incoming().keys().hasAll(['email', 'role', 'name']) &&
+                      incoming().role == 'user';
       allow update: if (isUser(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'browsingHistory'])) ||
                     isAdmin();
     }
@@ -53,8 +49,7 @@ service cloud.firestore {
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();
-      
-      // Sub-collection: Reviews
+
       match /reviews/{reviewId} {
         allow read: if true;
         allow create: if isSignedIn() && isEmailVerified() && incoming().userId == request.auth.uid;
@@ -72,6 +67,24 @@ service cloud.firestore {
     // 4. Wishlists
     match /wishlists/{userId} {
       allow read, write: if isUser(userId);
+    }
+
+    // 5. Site Config (shipping/return policies, size guide)
+    match /siteConfig/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 6. Categories
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 7. Discounts
+    match /discounts/{discountId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }

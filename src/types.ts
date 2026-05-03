@@ -16,19 +16,28 @@ export enum UserRole {
   ADMIN = "admin"
 }
 
+export interface ProductColor {
+  name: string;
+  hex: string;
+}
+
 export interface Product {
   id: string;
   name: string;
   description: string;
-  category: Category;
+  narrative?: string;
+  shippingCare?: string;
+  category: string;
   price: number;
+  discountedPrice?: number;
   currencies: { [key: string]: number };
   sizes: string[];
-  colors: string[];
+  colors: ProductColor[];
   stock: number;
   rating: number;
   reviewsCount: number;
   images: string[];
+  isActive: boolean;
   createdAt: any;
 }
 
@@ -79,3 +88,47 @@ export interface UserProfile {
 }
 
 export interface CartItem extends OrderItem {}
+
+export interface Discount {
+  id: string;
+  code: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  minOrder?: number;
+  maxUses?: number;
+  usedCount: number;
+  isActive: boolean;
+  expiresAt?: any;
+  createdAt: any;
+}
+
+export interface SizeGuideRow {
+  size: string;
+  bust: string;
+  waist: string;
+  hips: string;
+  length: string;
+}
+
+export interface SiteConfig {
+  id: string;
+  shippingPolicy: string;
+  returnPolicy: string;
+  sizeGuide: {
+    title: string;
+    intro: string;
+    rows: SizeGuideRow[];
+    notes: string;
+  };
+  updatedAt: any;
+}
+
+export interface CategoryDoc {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: any;
+}

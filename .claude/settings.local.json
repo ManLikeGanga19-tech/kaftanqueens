@@ -30,7 +30,22 @@
       "Read(//home/mlg19/.config/gcloud/**)",
       "Bash(firebase login:ci --no-localhost)",
       "Bash(env)",
-      "Read(//home/mlg19/.config/**)"
+      "Read(//home/mlg19/.config/**)",
+      "Bash(grep -v \"^$\")",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(kill %1)",
+      "Read(//tmp/**)",
+      "Bash(dig +short kaftanqueens.com A)",
+      "Bash(dig +short www.kaftanqueens.com)",
+      "Bash(dig +short kaftanqueens.com TXT)",
+      "Bash(firebase deploy *)",
+      "Bash(firebase functions:secrets:list --project kaftanqueens-2495c)",
+      "Bash(firebase --help)",
+      "Bash(firebase functions:secrets:get DARAJA_CONSUMER_KEY --project kaftanqueens-2495c)",
+      "Bash(firebase functions:secrets:get DARAJA_CONSUMER_SECRET --project kaftanqueens-2495c)",
+      "Bash(firebase functions:secrets:get DARAJA_SHORTCODE --project kaftanqueens-2495c)",
+      "Bash(firebase functions:secrets:get DARAJA_PASSKEY --project kaftanqueens-2495c)",
+      "Bash(firebase functions:secrets:get DARAJA_ENV --project kaftanqueens-2495c)"
     ]
   }
 }

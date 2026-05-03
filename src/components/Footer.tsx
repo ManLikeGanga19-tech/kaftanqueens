@@ -1,5 +1,11 @@
 import { Link } from 'react-router-dom';
-import { Instagram, Facebook, Twitter, Mail, Phone, MapPin, MessageCircle } from 'lucide-react';
+import { Instagram, Facebook, Mail, Phone, MessageCircle } from 'lucide-react';
+
+const TikTokIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.28 6.28 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.79 1.54V6.79a4.85 4.85 0 0 1-1.02-.1z" />
+  </svg>
+);
 
 const Footer = () => {
   return (
@@ -13,10 +19,18 @@ const Footer = () => {
             Bridging tradition and modernity with premium Kenyan kaftans. Crafted for the queen in you.
           </p>
           <div className="flex space-x-4">
-            <Instagram size={20} className="hover:text-brand-accent cursor-pointer transition-colors" />
-            <Facebook size={20} className="hover:text-brand-accent cursor-pointer transition-colors" />
-            <Twitter size={20} className="hover:text-brand-accent cursor-pointer transition-colors" />
-            <MessageCircle size={20} className="hover:text-brand-accent cursor-pointer transition-colors" aria-label="WhatsApp" />
+            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+              <Instagram size={20} className="hover:text-brand-accent cursor-pointer transition-colors" />
+            </a>
+            <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
+              <Facebook size={20} className="hover:text-brand-accent cursor-pointer transition-colors" />
+            </a>
+            <a href="https://wa.me/254700000000" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp">
+              <MessageCircle size={20} className="hover:text-brand-accent cursor-pointer transition-colors" />
+            </a>
+            <a href="https://tiktok.com" target="_blank" rel="noopener noreferrer" aria-label="TikTok" className="hover:text-brand-accent cursor-pointer transition-colors">
+              <TikTokIcon />
+            </a>
           </div>
         </div>
 
@@ -42,10 +56,6 @@ const Footer = () => {
 
         <div className="space-y-4">
           <h4 className="text-lg font-serif mb-6 text-brand-accent uppercase tracking-widest">Contact Us</h4>
-          <div className="flex items-start space-x-3 text-sm opacity-70 font-medium tracking-wide">
-            <MapPin size={18} className="mt-1" />
-            <span>Nairobi, Kenya<br />The Alchemist, Parklands</span>
-          </div>
           <div className="flex items-center space-x-3 text-sm opacity-70 font-medium tracking-wide">
             <Phone size={18} />
             <span>+254 700 000 000</span>
@@ -56,7 +66,7 @@ const Footer = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="container mx-auto px-4 mt-20 pt-8 border-t border-brand-secondary/10 flex flex-col md:flex-row justify-between items-center text-[10px] uppercase tracking-[0.2em] opacity-40">
         <p>© 2026 KAFTAN QUEENS. ALL RIGHTS RESERVED.</p>
         <div className="flex space-x-6 mt-4 md:mt-0">
